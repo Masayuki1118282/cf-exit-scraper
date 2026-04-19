@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   }
 
   const supabase = createAdminClient();
-  const platforms = ['makuake', 'campfire'] as const;
+  const platforms = ['makuake', 'campfire', 'greenfunding'] as const;
   let totalNew = 0;
   let totalErrors = 0;
 

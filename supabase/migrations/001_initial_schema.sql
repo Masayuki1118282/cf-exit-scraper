@@ -1,7 +1,7 @@
 -- projects table
 CREATE TABLE IF NOT EXISTS projects (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  platform TEXT NOT NULL CHECK (platform IN ('makuake', 'campfire')),
+  platform TEXT NOT NULL CHECK (platform IN ('makuake', 'campfire', 'greenfunding')),
   external_id TEXT NOT NULL,
   url TEXT NOT NULL,
   title TEXT NOT NULL,

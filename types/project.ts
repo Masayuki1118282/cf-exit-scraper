@@ -1,4 +1,4 @@
-export type Platform = 'makuake' | 'campfire';
+export type Platform = 'makuake' | 'campfire' | 'greenfunding';
 
 export type ProjectStatus = 'active' | 'completed' | 'failed';
 
