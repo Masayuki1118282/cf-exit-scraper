@@ -35,6 +35,9 @@ export interface Deal {
   contacted_at: string | null;
   last_reply_at: string | null;
   closed_at: string | null;
+  contact_email: string | null;
+  contact_sns_url: string | null;
+  contact_note: string | null;
   created_at: string;
   updated_at: string;
 }
