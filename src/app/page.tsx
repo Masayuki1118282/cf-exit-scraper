@@ -225,7 +225,7 @@ export default async function DashboardPage({
                           </td>
                           <td className="px-4 py-3 text-right text-gray-700">{formatAmount(deal.estimated_commission)}</td>
                           <td className="px-4 py-3 text-gray-400 text-xs hidden lg:table-cell">
-                            {new Date(deal.updated_at).toLocaleDateString('ja-JP')}
+                            {new Date(deal.updated_at).toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo' })}
                           </td>
                         </tr>
                       ))}

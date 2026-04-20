@@ -38,6 +38,7 @@ function formatDate(iso: string | null) {
   return new Date(iso).toLocaleString('ja-JP', {
     year: 'numeric', month: 'numeric', day: 'numeric',
     hour: '2-digit', minute: '2-digit',
+    timeZone: 'Asia/Tokyo',
   });
 }
 
