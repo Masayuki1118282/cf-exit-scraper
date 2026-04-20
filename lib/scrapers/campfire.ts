@@ -110,9 +110,18 @@ export class CampfireScraper extends BaseScraper {
 
     // Only accept projects that have ended AND achieved their goal
     const endAt = endAtStr ? new Date(endAtStr) : null;
-    if (!endAt || endAt > new Date()) return null;
-    if (currentAmount <= 0) return null;
-    if (targetAmount > 0 && currentAmount < targetAmount) return null;
+    if (!endAt || endAt > new Date()) {
+      log('info', 'campfire_skip_active', { url, endAtStr, now: new Date().toISOString() });
+      return null;
+    }
+    if (currentAmount <= 0) {
+      log('info', 'campfire_skip_no_amount', { url });
+      return null;
+    }
+    if (targetAmount > 0 && currentAmount < targetAmount) {
+      log('info', 'campfire_skip_not_achieved', { url, currentAmount, targetAmount });
+      return null;
+    }
 
     const idMatch = url.match(/\/projects\/(\d+)\/view/);
     const externalId = idMatch?.[1] ?? url;
