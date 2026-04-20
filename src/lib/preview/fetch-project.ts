@@ -67,123 +67,36 @@ function dig(obj: unknown, ...keys: string[]): unknown {
 
 function parseMakuake($: CheerioAPI): Partial<ProjectPreview> {
   const ogp = getOgp($);
-  let achieved_amount: number | null = null;
-  let supporter_count: number | null = null;
-  let project_end_date: string | null = null;
-  let owner_name: string | null = null;
-  let owner_company: string | null = null;
 
-  // --- Try __NEXT_DATA__ first ---
-  const nextData = getNextData($);
-  if (nextData) {
-    const project =
-      dig(nextData, 'props', 'pageProps', 'project') ||
-      dig(nextData, 'props', 'pageProps', 'projectDetail') ||
-      dig(nextData, 'props', 'pageProps', 'data', 'project');
+  // Makuake embeds all key data in <meta property="note:*"> tags
+  const noteMeta = (name: string) =>
+    $(`meta[property="note:${name}"]`).attr('content') ?? null;
 
-    if (project && typeof project === 'object') {
-      const p = project as Record<string, unknown>;
-      achieved_amount =
-        (p.collected_money as number) ??
-        (p.achievedAmount as number) ??
-        (p.achieved_amount as number) ?? null;
+  const currentAmount = noteMeta('current_amount');
+  const achieved_amount = currentAmount ? parseInt(currentAmount, 10) : null;
 
-      supporter_count =
-        (p.patron_count as number) ??
-        (p.patronCount as number) ??
-        (p.supporter_count as number) ??
-        (p.supporterCount as number) ?? null;
+  const supporters = noteMeta('supporters');
+  const supporter_count = supporters ? parseInt(supporters, 10) : null;
 
-      const endDate =
-        (p.end_date as string) ?? (p.endDate as string) ?? (p.closing_date as string) ?? null;
-      if (endDate) project_end_date = parseDate(endDate) ?? endDate.slice(0, 10);
+  const endAt = noteMeta('end_at');
+  const project_end_date = endAt ? endAt.slice(0, 10) : null;
 
-      const owner = (p.owner as Record<string, unknown>) ?? {};
-      owner_name = (owner.name as string) ?? (p.owner_name as string) ?? null;
-      owner_company = (owner.company as string) ?? (p.owner_company as string) ?? null;
-    }
-  }
+  const owner_name = noteMeta('owner');
+  const category = noteMeta('category');
 
-  // --- Fallback: targeted CSS selectors ---
-  if (achieved_amount === null) {
-    // Makuake uses data attributes or specific class patterns
-    const amountCandidates = [
-      $('[data-collected-money]').attr('data-collected-money'),
-      $('[class*="CollectedMoney"] [class*="amount"]').first().text(),
-      $('[class*="collected"] [class*="price"]').first().text(),
-      $('[class*="SupportAmount"]').first().text(),
-    ];
-    for (const c of amountCandidates) {
-      if (c) { achieved_amount = parseAmount(c); if (achieved_amount) break; }
-    }
-  }
-
-  if (supporter_count === null) {
-    const countCandidates = [
-      $('[data-patron-count]').attr('data-patron-count'),
-      $('[class*="PatronCount"]').first().text(),
-      $('[class*="SupporterCount"]').first().text(),
-    ];
-    for (const c of countCandidates) {
-      if (c) {
-        const n = parseInt(c.replace(/[^0-9]/g, ''), 10);
-        if (!isNaN(n)) { supporter_count = n; break; }
-      }
-    }
-  }
-
-  // --- Fallback: scan leaf-level text nodes ---
-  if (achieved_amount === null) {
-    $('span, p, strong, b, dd').each((_: number, el: unknown) => {
-      const text = $(el).text().trim();
-      // Look for small elements containing only an amount
-      if (/^[\d,，]+円$/.test(text)) {
-        const prev = $(el).closest('*').prev().text();
-        if (prev.includes('達成') || prev.includes('集まりました') || prev.includes('支援総額')) {
-          achieved_amount = parseAmount(text);
-          return false;
-        }
-      }
-      if (achieved_amount === null && text.match(/[\d,]+円/) && text.includes('達成') && text.length < 50) {
-        const m = text.match(/([\d,]+)円/);
-        if (m) { achieved_amount = parseAmount(m[1]); return false; }
-      }
-    });
-  }
-
-  if (supporter_count === null) {
-    $('span, p, strong, b, dd').each((_: number, el: unknown) => {
-      const text = $(el).text().trim();
-      if (/^\d+$/.test(text) || /^\d+人$/.test(text)) {
-        const label = $(el).closest('*').prev().text() + $(el).parent().text();
-        if (label.includes('支援者') || label.includes('人が支援') || label.includes('サポーター')) {
-          const m = text.match(/(\d+)/);
-          if (m) { supporter_count = parseInt(m[1], 10); return false; }
-        }
-      }
-    });
-  }
-
-  if (project_end_date === null) {
-    $('time').each((_: number, el: unknown) => {
-      const dt = $(el).attr('datetime');
-      if (dt) { project_end_date = dt.slice(0, 10); return false; }
-    });
-  }
-
-  if (owner_name === null) {
-    const ownerEl = $('[class*="owner" i], [class*="producer" i], [class*="Owner"]').first();
-    if (ownerEl.length) owner_name = ownerEl.text().trim().slice(0, 50) || null;
-  }
+  // og:title on Makuake includes "Makuake｜" prefix — strip it
+  const rawTitle = ogp.title ?? '';
+  const project_title = rawTitle.replace(/^Makuake[｜|]\s*/, '').replace(/\s*[｜|].*$/, '').trim() || rawTitle;
 
   return {
-    project_title: ogp.title ?? undefined,
+    project_title: project_title || undefined,
     project_image_url: ogp.image,
     achieved_amount,
     supporter_count,
     project_end_date,
     owner_name,
-    owner_company,
+    owner_company: null,
+    category,
   };
 }
 
