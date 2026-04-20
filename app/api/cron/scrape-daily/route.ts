@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { log } from '@/lib/utils/logger';
 import { notifyScrapeSummary, notifyDiscord } from '@/lib/notify/discord';
-import type { ScrapedProject } from '@/types/project';
 
 export const maxDuration = 300;
 
@@ -67,6 +66,21 @@ export async function GET(req: NextRequest) {
 
       await notifyDiscord(`❌ ${platform}: Cronスクレイピング失敗 - ${String(err)}`);
     }
+  }
+
+  // After all platforms scraped, auto-register leads with scoring
+  try {
+    const baseUrl = process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : 'http://localhost:3000';
+    const leadsRes = await fetch(`${baseUrl}/api/leads`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${process.env.CRON_SECRET}` },
+    });
+    const leadsResult = await leadsRes.json() as { created?: number; hotLeads?: number };
+    log('info', 'cron_leads_scored', leadsResult);
+  } catch (err) {
+    log('error', 'cron_leads_score_error', { error: String(err) });
   }
 
   return NextResponse.json({ totalNew, totalErrors });
