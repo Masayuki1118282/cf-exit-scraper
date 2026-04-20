@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { createSessionClient } from '@/lib/supabase/server-session';
+import { createAdminClient } from '@/lib/supabase/server';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PipelineFunnel } from '@/components/deals/PipelineFunnel';
@@ -43,8 +44,11 @@ export default async function DashboardPage({
   searchParams: Promise<{ status?: string }>;
 }) {
   const { status: filterStatus } = await searchParams;
-  const supabase = await createSessionClient();
+  const sessionClient = await createSessionClient();
+  const { data: { user } } = await sessionClient.auth.getUser();
+  if (!user) return null; // proxy.ts handles redirect
 
+  const admin = createAdminClient();
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
   const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000).toISOString();
@@ -55,14 +59,14 @@ export default async function DashboardPage({
     { count: staleCount },
     { data: pipelineDeals },
   ] = await Promise.all([
-    supabase.from('deals').select('*').order('updated_at', { ascending: false }),
-    supabase.from('deals').select('*', { count: 'exact', head: true }).gte('created_at', monthStart),
-    supabase
+    admin.from('deals').select('*').order('updated_at', { ascending: false }),
+    admin.from('deals').select('*', { count: 'exact', head: true }).gte('created_at', monthStart),
+    admin
       .from('deals')
       .select('*', { count: 'exact', head: true })
       .eq('status', 'contacted')
       .lt('contacted_at', threeDaysAgo),
-    supabase
+    admin
       .from('deals')
       .select('estimated_commission, actual_commission, status')
       .in('status', ['negotiating', 'closed_won']),
