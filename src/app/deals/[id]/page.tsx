@@ -11,6 +11,7 @@ import { PriceEditor } from '@/components/deals/PriceEditor';
 import { ContactEditor } from '@/components/deals/ContactEditor';
 import { DeleteDealButton } from '@/components/deals/DeleteDealButton';
 import { ValuationCalculator } from '@/components/deals/ValuationCalculator';
+import { RefreshPreviewButton } from '@/components/deals/RefreshPreviewButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -136,8 +137,9 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
               {d.closed_at && <p className="text-xs text-gray-400">成約日: {formatDate(d.closed_at)}</p>}
             </div>
 
-            {/* Delete */}
-            <div className="pt-3 border-t">
+            {/* Refresh + Delete */}
+            <div className="pt-3 border-t space-y-2">
+              <RefreshPreviewButton dealId={d.id} projectUrl={d.project_url} />
               <DeleteDealButton dealId={d.id} />
             </div>
           </div>
