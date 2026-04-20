@@ -3,16 +3,9 @@ import { log } from '../utils/logger';
 import { delay } from '../utils/delay';
 import type { ScrapedProject } from '@/types/project';
 
-// note:* meta tags use property= attribute (not name=)
 const META = {
-  title: 'note:title',
-  owner: 'note:owner',
-  category: 'note:category',
-  target_amount: 'note:target_amount',
-  current_amount: 'note:current_amount',
-  supporters: 'note:supporters',
-  start_at: 'note:start_at',
-  end_at: 'note:end_at',
+  title: 'og:title',
+  description: 'og:description',
 } as const;
 
 // Target categories only — product/gadget/food
@@ -96,22 +89,61 @@ export class CampfireScraper extends BaseScraper {
 
     const getMeta = (prop: string) =>
       $(`meta[property="${prop}"]`).attr('content') ?? null;
+    const getMetaName = (name: string) =>
+      $(`meta[name="${name}"]`).attr('content') ?? null;
 
-    const title = getMeta(META.title);
+    const title = getMeta(META.title) ?? getMetaName('title') ?? ($('title').text().trim() || null);
     if (!title) {
       log('warn', 'campfire_no_title', { url });
       return null;
     }
 
-    const currentAmount = parseInt(getMeta(META.current_amount) ?? '0', 10);
-    const targetAmount = parseInt(getMeta(META.target_amount) ?? '0', 10);
-    const endAtStr = getMeta(META.end_at);
-    const startAtStr = getMeta(META.start_at);
+    // Parse amounts from JSON-LD or visible HTML text
+    const parseAmount = (text: string) =>
+      parseInt(text.replace(/[¥,円\s]/g, ''), 10) || 0;
 
-    // Only accept projects that have ended AND achieved their goal
-    const endAt = endAtStr ? new Date(endAtStr) : null;
+    // Try JSON-LD first
+    let currentAmount = 0;
+    let targetAmount = 0;
+    let supporterCount: number | null = null;
+    let endDateStr: string | null = null;
+    let startDateStr: string | null = null;
+    let ownerName: string | null = null;
+
+    $('script[type="application/ld+json"]').each((_, el) => {
+      try {
+        const data = JSON.parse($(el).html() ?? '{}');
+        if (data['@type'] === 'Product' || data.name) {
+          if (data.offers?.price) currentAmount = parseAmount(String(data.offers.price));
+        }
+      } catch { /* ignore */ }
+    });
+
+    // Fallback: parse from visible HTML
+    if (currentAmount === 0) {
+      const amountText = $('[class*="amount"], [class*="collected"], [class*="raised"]').first().text();
+      if (amountText) currentAmount = parseAmount(amountText);
+    }
+
+    const targetText = $('[class*="target"], [class*="goal"]').first().text();
+    if (targetText) targetAmount = parseAmount(targetText);
+
+    const supporterText = $('[class*="supporter"], [class*="backer"], [class*="supporter-count"]').first().text();
+    if (supporterText) {
+      const m = supporterText.match(/[\d,]+/);
+      if (m) supporterCount = parseInt(m[0].replace(',', ''), 10);
+    }
+
+    const endText = $('[class*="end"], [class*="deadline"], [class*="finish"]').first().text();
+    const endMatch = endText.match(/(\d{4})[^\d](\d{1,2})[^\d](\d{1,2})/);
+    if (endMatch) {
+      endDateStr = `${endMatch[1]}-${endMatch[2].padStart(2, '0')}-${endMatch[3].padStart(2, '0')}`;
+    }
+
+    // Check if project is ended
+    const endAt = endDateStr ? new Date(endDateStr) : null;
     if (!endAt || endAt > new Date()) {
-      log('info', 'campfire_skip_active', { url, endAtStr, now: new Date().toISOString() });
+      log('info', 'campfire_skip_active', { url, endDateStr });
       return null;
     }
     if (currentAmount <= 0) {
@@ -129,17 +161,14 @@ export class CampfireScraper extends BaseScraper {
     const achievementRate =
       targetAmount > 0 ? Math.round((currentAmount / targetAmount) * 100) : null;
 
-    const description =
-      $('meta[property="og:description"]').attr('content') ??
-      $('meta[name="description"]').attr('content') ??
-      null;
+    const description = getMeta(META.description) ?? getMetaName('description') ?? null;
 
     const ownerHref = $('a[href*="/users/"]').first().attr('href') ?? null;
     const ownerProfileUrl = ownerHref
-      ? ownerHref.startsWith('http')
-        ? ownerHref
-        : `${this.baseUrl}${ownerHref}`
+      ? ownerHref.startsWith('http') ? ownerHref : `${this.baseUrl}${ownerHref}`
       : null;
+
+    ownerName = $('[class*="owner"], [class*="user-name"], [class*="author"]').first().text().trim() || null;
 
     log('info', 'campfire_project_achieved', { externalId, achievementRate, currentAmount });
 
@@ -149,16 +178,16 @@ export class CampfireScraper extends BaseScraper {
       url,
       title,
       description: description ? description.slice(0, 500) : null,
-      category: getMeta(META.category),
-      owner_name: getMeta(META.owner),
+      category: null,
+      owner_name: ownerName,
       owner_company: null,
       owner_profile_url: ownerProfileUrl,
       achieved_amount: currentAmount,
       target_amount: targetAmount > 0 ? targetAmount : null,
       achievement_rate: achievementRate,
-      supporter_count: parseInt(getMeta(META.supporters) ?? '0', 10) || null,
-      start_date: startAtStr ? startAtStr.split('T')[0] : null,
-      end_date: endAtStr ? endAtStr.split('T')[0] : null,
+      supporter_count: supporterCount,
+      start_date: startDateStr,
+      end_date: endDateStr,
       status: 'completed',
       raw_html: html.slice(0, 50_000),
     };
