@@ -10,6 +10,7 @@ import { NoteList } from '@/components/deals/NoteList';
 import { PriceEditor } from '@/components/deals/PriceEditor';
 import { ContactEditor } from '@/components/deals/ContactEditor';
 import { DeleteDealButton } from '@/components/deals/DeleteDealButton';
+import { ValuationCalculator } from '@/components/deals/ValuationCalculator';
 
 export const dynamic = 'force-dynamic';
 
@@ -164,6 +165,8 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
               actualCommission={d.actual_commission}
               status={d.status}
             />
+
+            <ValuationCalculator dealId={d.id} />
 
             <ContactEditor
               dealId={d.id}
