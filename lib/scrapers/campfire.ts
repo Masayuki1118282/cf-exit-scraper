@@ -1,5 +1,6 @@
 import { BaseScraper } from './base';
 import { log } from '../utils/logger';
+import { delay } from '../utils/delay';
 import type { ScrapedProject } from '@/types/project';
 
 // note:* meta tags use property= attribute (not name=)
@@ -14,33 +15,79 @@ const META = {
   end_at: 'note:end_at',
 } as const;
 
+// Target categories only — product/gadget/food
+const CATEGORIES = ['product', 'technology', 'food'] as const;
+
 export class CampfireScraper extends BaseScraper {
   constructor() {
     super('campfire', process.env.CAMPFIRE_BASE_URL ?? 'https://camp-fire.jp');
   }
 
-  // Search page returns static HTML with 20 project links per page
+  // Called internally by run() with category; base class signature satisfied via override below
   async scrapeListPage(page: number): Promise<string[]> {
+    return this.scrapeListPageForCategory(page, CATEGORIES[0]);
+  }
+
+  private async scrapeListPageForCategory(page: number, category: string): Promise<string[]> {
     const html = await this.fetch(
-      `/projects/search?status=success&sort=newest&page=${page}`
+      `/projects/search?status=success&category=${category}&sort=newest&page=${page}`
     );
     const $ = this.load(html);
 
     const urls: string[] = [];
     $('a[href*="/projects/"]').each((_, el) => {
       const href = $(el).attr('href') ?? '';
-      const match = href.match(/\/projects\/(\d+)\/view/);
-      if (match) {
-        const url = href.startsWith('http')
-          ? href
-          : `${this.baseUrl}${href}`;
+      if (/\/projects\/\d+\/view/.test(href)) {
+        const url = href.startsWith('http') ? href : `${this.baseUrl}${href}`;
         urls.push(url);
       }
     });
 
     const unique = [...new Set(urls)];
-    log('info', 'campfire_search_page', { page, found: unique.length });
+    log('info', 'campfire_search_page', { category, page, found: unique.length });
     return unique;
+  }
+
+  // Override base run() to iterate categories × pages
+  async run(): Promise<ScrapedProject[]> {
+    const results: ScrapedProject[] = [];
+    const seen = new Set<string>();
+
+    for (const category of CATEGORIES) {
+      if (this.errorTracker.isHalted()) break;
+
+      for (let page = 1; page <= this.maxPages; page++) {
+        if (this.errorTracker.isHalted()) break;
+
+        let urls: string[];
+        try {
+          urls = await this.scrapeListPageForCategory(page, category);
+        } catch (err) {
+          log('error', 'campfire_list_error', { category, page, error: String(err) });
+          break;
+        }
+
+        if (urls.length === 0) break;
+
+        for (const url of urls) {
+          if (seen.has(url) || this.errorTracker.isHalted()) continue;
+          seen.add(url);
+
+          await delay(this.requestDelay);
+
+          try {
+            const project = await this.scrapeProjectPage(url);
+            if (project) results.push(project);
+          } catch (err) {
+            log('error', 'campfire_project_error', { url, error: String(err) });
+          }
+        }
+
+        await delay(this.requestDelay);
+      }
+    }
+
+    return results;
   }
 
   async scrapeProjectPage(url: string): Promise<ScrapedProject | null> {
@@ -78,20 +125,14 @@ export class CampfireScraper extends BaseScraper {
       $('meta[name="description"]').attr('content') ??
       null;
 
-    // Owner profile link: Campfire uses /users/{id} paths
-    const ownerHref =
-      $('a[href*="/users/"]').first().attr('href') ?? null;
+    const ownerHref = $('a[href*="/users/"]').first().attr('href') ?? null;
     const ownerProfileUrl = ownerHref
       ? ownerHref.startsWith('http')
         ? ownerHref
         : `${this.baseUrl}${ownerHref}`
       : null;
 
-    log('info', 'campfire_project_achieved', {
-      externalId,
-      achievementRate,
-      currentAmount,
-    });
+    log('info', 'campfire_project_achieved', { externalId, achievementRate, currentAmount });
 
     return {
       platform: 'campfire',
